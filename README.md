@@ -42,3 +42,9 @@ Citation Check
 ↓
 pass → ship
 fail → regenerate / stop
+
+```
+
+---
+
+## Its a claude / chatgpt skill, if u are uncleared on how to use it, please refer to [claude-skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview), [chatgpt-skill](https://developers.openai.com/codex/skills)
