@@ -2,6 +2,8 @@
 
 > No citation → no output.
 
+### TRY [Kael.im](https://kael.im/home)(NotebookLM slides alternative) and register at this link for 100 pages free daily quota (nbp)!
+
 Citation Check is a small, opinionated module for **detecting and blocking hallucinated or missing citations** in LLM outputs.
 
 Built for research, slides, and agent pipelines where correctness matters.
