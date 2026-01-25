@@ -15,7 +15,10 @@ https://github.com/user-attachments/assets/99d427cf-992f-455c-897b-a8f8a132271c
 
 <img width="1219" height="713" alt="Screenshot 2026-01-25 at 13 56 07" src="https://github.com/user-attachments/assets/660592cd-ca53-46ae-8064-28fad9e90b44" />
 ---
-
+## How to Use?
+1. download the skill.md in this github repo
+2. upload it to claude (click on your profile pic -> setting -> capabilities -> scroll down and click the <add>button under skill)
+3. everytime u wanna use it tell claude: use citation checker / skills (its pretty flexible on what you call it)
 ## What it does
 
 - ✅ Checks that every factual claim has a citation  
