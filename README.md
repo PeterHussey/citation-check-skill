@@ -9,16 +9,23 @@ Built for research, slides, and agent pipelines where correctness matters.
 ---
 
 ## Checked when its all gud
+
 https://github.com/user-attachments/assets/da72770c-85dc-4c8c-b3f4-1cb5e28cadfb
+
 ## Identified Issues
+
 <img width="768" height="429" alt="Screenshot 2026-01-22 at 12 37 02" src="https://github.com/user-attachments/assets/d600af61-8edc-4f94-b721-b375cb1a8c39" />
 <img width="749" height="602" alt="Screenshot 2026-01-22 at 12 37 24" src="https://github.com/user-attachments/assets/0fa1863a-5188-4ac9-865f-429cd1ae755e" />
 
+---
+
 ## What it does
 
-- checks that every factual claim has a citation  
-- verifies that cited sources actually exist  
-- optionally validates claim–citation consistency  
+- ✅ Checks that every factual claim has a citation  
+- ✅ Verifies that cited sources actually exist  
+- ✅ Validates claim–citation consistency (exact numbers, not rounded)
+- ✅ Supports vision: reads slides, PDFs, charts, tables
+- ✅ Two modes: web search verification OR doc-only verification
 
 If a check fails, the output should be blocked or regenerated.
 
@@ -29,22 +36,82 @@ If a check fails, the output should be blocked or regenerated.
 Most tools add citations *after* generation.  
 This enforces citations as a **generation constraint**.
 
-If your agent can’t cite a claim, it shouldn’t make it.
+If your agent can't cite a claim, it shouldn't make it.
+
+---
+
+## v2.0 — Consistency Update
+
+Same input → Same output. Key changes:
+
+| Feature                        | What it does                                                 |
+| ------------------------------ | ------------------------------------------------------------ |
+| **Two-Pass Architecture**      | Extract all claims first, then verify. No more inconsistent results. |
+| **Claim Extraction Rules**     | Explicit taxonomy — statistics, comparatives, attributions, etc. |
+| **Status Decision Tree**       | Deterministic classification: Verified → Numerical Error → Hallucination |
+| **Academic Precision Mode**    | 96.555% ≠ 97%. Exact numbers only.                           |
+| **Mandatory Search Templates** | Runs ALL query patterns, not ad-hoc searches                 |
+| **Tie-Breaker Rules**          | No judgment calls on edge cases                              |
 
 ---
 
 ## Typical flow
 
 ```text
-LLM output
+LLM output (slides / report / PDF)
 ↓
-Citation Check
+Pass 1: Extract all claims
+↓
+Pass 2: Verify each claim
 ↓
 pass → ship
-fail → regenerate / stop
-
+fail → regenerate / fix
 ```
 
 ---
 
-## Its a claude / chatgpt skill, if u are uncleared on how to use it, please refer to [claude-skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview), [chatgpt-skill](https://developers.openai.com/codex/skills)
+## Two Modes
+
+### Mode 1: Search Verification (default)
+
+- Searches web for authoritative sources
+- Validates citations actually exist
+- Checks if cited sources say what's claimed
+
+### Mode 2: Doc-Only Verification
+
+- User provides source document(s)
+- EVERYTHING must trace to those docs
+- Flags any external knowledge as hallucination
+
+Trigger doc-only mode with: *"only use this document"* / *"verify against the PDF only"*
+
+---
+
+## Status Classifications
+
+| Status               | Meaning                                               |
+| -------------------- | ----------------------------------------------------- |
+| ✅ Verified           | Exact match with source                               |
+| ⚠️ Numerical Error    | Values don't match (e.g., 97% vs 96.555%)             |
+| ⚠️ Unverified         | No authoritative source found                         |
+| ❌ Hallucination      | Contradicts source or fabricated                      |
+| ❌ Misleading         | Cherry-picked or missing context                      |
+| ❌ Citation Not Found | Referenced paper/report doesn't exist                 |
+| ❌ Not in Source      | Claim can't be traced to provided doc (doc-only mode) |
+
+---
+
+## Installation
+
+It's a Claude / ChatGPT skill. 
+
+- **Claude:** [Agent Skills Documentation](https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/overview)
+- **ChatGPT:** [Codex Skills](https://developers.openai.com/codex/skills)
+
+---
+
+## License
+
+MIT
+
