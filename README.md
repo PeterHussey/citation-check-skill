@@ -7,16 +7,16 @@ Citation Check is a small, opinionated module for **detecting and blocking hallu
 Built for research, slides, and agent pipelines where correctness matters.
 
 ---
+## Demo - Identified Issues
 
-## Checked when its all gud
 
-https://github.com/user-attachments/assets/da72770c-85dc-4c8c-b3f4-1cb5e28cadfb
+https://github.com/user-attachments/assets/99d427cf-992f-455c-897b-a8f8a132271c
 
-## Identified Issues
 
-<img width="768" height="429" alt="Screenshot 2026-01-22 at 12 37 02" src="https://github.com/user-attachments/assets/d600af61-8edc-4f94-b721-b375cb1a8c39" />
-<img width="749" height="602" alt="Screenshot 2026-01-22 at 12 37 24" src="https://github.com/user-attachments/assets/0fa1863a-5188-4ac9-865f-429cd1ae755e" />
+https://github.com/user-attachments/assets/799b5bea-719e-4fa7-a1af-5df15ee46362
 
+
+<img width="1219" height="713" alt="Screenshot 2026-01-25 at 13 56 07" src="https://github.com/user-attachments/assets/660592cd-ca53-46ae-8064-28fad9e90b44" />
 ---
 
 ## What it does
