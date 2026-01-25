@@ -1,4 +1,4 @@
-# Citation Check
+# Citation Check v2
 
 > No citation → no output.
 
