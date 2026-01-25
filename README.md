@@ -13,9 +13,6 @@ Built for research, slides, and agent pipelines where correctness matters.
 https://github.com/user-attachments/assets/99d427cf-992f-455c-897b-a8f8a132271c
 
 
-https://github.com/user-attachments/assets/799b5bea-719e-4fa7-a1af-5df15ee46362
-
-
 <img width="1219" height="713" alt="Screenshot 2026-01-25 at 13 56 07" src="https://github.com/user-attachments/assets/660592cd-ca53-46ae-8064-28fad9e90b44" />
 ---
 
