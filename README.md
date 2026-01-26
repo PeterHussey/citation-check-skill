@@ -14,7 +14,7 @@ https://github.com/user-attachments/assets/99d427cf-992f-455c-897b-a8f8a132271c
 
 
 <img width="1219" height="713" alt="Screenshot 2026-01-25 at 13 56 07" src="https://github.com/user-attachments/assets/660592cd-ca53-46ae-8064-28fad9e90b44" />
-
+## Check out [Awesome Notebooklm Slides Prompts List](https://github.com/serenakeyitan/awesome-notebookLM-prompts/tree/main) with all viral templates on X!
 ## How to Use?
 1. Download `citation-check-skill.zip` from [Releases](https://github.com/serenakeyitan/citation-check-skill/releases/latest)
 2. Upload it to Claude Code (Profile → Settings → Capabilities → Skills → Add)
