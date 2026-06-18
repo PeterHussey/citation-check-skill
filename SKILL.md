@@ -13,6 +13,27 @@ Verification tool with vision + web search. Validates every claim against author
 
 ---
 
+## Dependencies
+
+This skill works out of the box for general use. Some features require additional setup:
+
+| Feature | Requirement | Without it |
+|---|---|---|
+| Web search (all modes) | Tavily MCP or equivalent search tool active in your session | Web-dependent verification cannot run; doc-only mode still works |
+| RAND publication verification | `publications-api` MCP (`mcp__publications-api__GetPublicationById`) | Falls back to rand.org web search automatically — slightly slower, same accuracy |
+| Federal award verification | USAspending MCP and/or SAM.gov MCP | Falls back to usaspending.gov web search |
+| Full-text academic paper access | hyperresearch CLI (`/Users/hussey/.local/pipx/venvs/hyperresearch/bin/hyperresearch fetch`) | Falls back to Paywall Resolution chain (PMC → Unpaywall → abstract-only status) |
+
+**If you are sharing this skill with a colleague:**
+- Web search and doc-only mode require no extra setup beyond Claude Code with a search-capable MCP
+- RAND MCP access requires being on a RAND project session with `publications-api` configured
+- hyperresearch requires the pipx install; colleagues without it get graceful fallback automatically
+- The `research@rand.org` email in the Unpaywall query string can be changed to any valid institutional email
+
+**RAND-specific routing** (claim-type routing table) is additive — colleagues at other organizations can ignore the RAND and USAspending rows or replace them with their own institutional backends. The rest of the skill is fully general.
+
+---
+
 ## Two Verification Modes
 
 ### Mode 1: Search Verification (Default)
@@ -64,13 +85,16 @@ Extract ONLY these claim types. Apply rules strictly — no judgment calls.
 | Type            | Pattern                                                    | Example                                          |
 | --------------- | ---------------------------------------------------------- | ------------------------------------------------ |
 | **Statistic**   | Any number with unit/context (%, $, count, ratio, decimal) | "92.3% accuracy", "$4.7B market"                 |
-| **Comparative** | X is [comparative] than Y                                  | "3x faster than baseline"                        |
+| **Comparative** | X is [comparative] than Y — includes stated multipliers ("3x", "twice as likely", "four times more") | "3x faster than baseline", "four times as likely: 1.7% vs. 0.4%" |
 | **Temporal**    | Time-bound assertion                                       | "In 2024, adoption reached..."                   |
 | **Attribution** | Claim tied to source                                       | "According to WHO...", "Smith et al. found..."   |
 | **Causal**      | X causes/leads to/results in Y                             | "This reduces latency by..."                     |
 | **Existence**   | Asserts something exists/is true                           | "There are 500M users", "The model supports..."  |
 | **Ranking**     | Position claims                                            | "largest", "first", "top 3"                      |
 | **Quote**       | Direct quotation                                           | Any text in quotation marks attributed to source |
+| **Internal data** | Statistics drawn from the study/report's own dataset — identifiable by phrases like "our data show", "participants reported", "n = X", regression coefficients, predicted probabilities, p-values | "ACE screened patients were 3x more likely: 1.5% vs. 0.5%" |
+
+**Compound claim rule:** If a single sentence contains two or more independently verifiable components (e.g., "low-income individuals have higher ACE exposure AND less access to protective factors"), split them into separate claim entries at extraction time and note the parent sentence. Each component is verified independently — a citation may support one but not the other.
 
 ### DO NOT extract as claims:
 
@@ -116,7 +140,13 @@ CITATION VALIDATION
 │   │        Issue: "Cannot locate [citation] in any database"
 │   │        STOP
 │   │
-│   └─ YES → Step 2: Does source contain the claimed topic?
+│   └─ YES (source exists) → Is full text accessible?
+│       ├─ YES → Step 2: Does source contain the claimed topic? [continue below]
+│       └─ NO (paywalled) → Apply Paywall Resolution chain
+│           ├─ Full text retrieved via PMC/Unpaywall → Step 2 [continue below]
+│           └─ Still inaccessible → Status: "Paywalled — abstract verified only"
+│
+│             Step 2: Does source contain the claimed topic?
 │             │
 │             ├─ NO → Status: "Misquoted"
 │             │        Issue: "Source exists but does not discuss [topic]"
@@ -138,6 +168,28 @@ CITATION VALIDATION
 │
 │
 STATISTIC/FACT VALIDATION
+│
+├─ Is this an INTERNAL DATA claim (from the document's own study/dataset)?
+│   ├─ YES → Go to INTERNAL DATA VALIDATION
+│   └─ NO → Step 1 below
+│
+│
+INTERNAL DATA VALIDATION
+│
+├─ Step 1: Is the claim internally consistent?
+│   │   Check: does the stated multiplier/qualifier match the underlying numbers?
+│   │   For Comparative claims: compute ratio from the raw percentages/counts provided
+│   │   e.g., "four times as likely: 1.7% vs. 0.4%" → 1.7/0.4 = 4.25x → stated "four times" understates
+│   │
+│   ├─ Multiplier/qualifier matches computed ratio → Status: "Verified (internal)"
+│   │                                                  Confidence: "exact"
+│   │
+│   ├─ Multiplier understates or overstates (but raw numbers present) → Status: "Numerical Error"
+│   │   Record: computed ratio, stated qualifier, suggested fix
+│   │
+│   └─ Raw numbers absent (only multiplier stated, no underlying figures) → Status: "Unverified (internal)"
+│       Issue: "Cannot verify — underlying data not provided in document"
+│
 │
 ├─ Step 1: Can you find an authoritative source?
 │   │   Run ALL mandatory search queries (see Search Templates)
@@ -224,7 +276,83 @@ NUMERICAL ERROR DETAILS (Academic Precision Mode)
 
 ---
 
+## Claim-Type Routing
+
+Before running search templates, identify the claim type and route to the appropriate verification backend. Routed verification is faster and more authoritative than web search for the types below.
+
+| Claim type | How to identify | Verification backend | Notes |
+|---|---|---|---|
+| RAND publication finding | Cites a RAND ID (RR-xxxx, MG-xxxx, PE-xxxx, RRA-xxxx, TR-xxxx, WR-xxxx, MR-xxxx, OP-xxxx) | `publications-api` MCP: call `GetPublicationById(id)` — see RAND Verification Procedure below | Do NOT use web search for RAND claims when MCP is available — MCP is authoritative |
+| Federal award / contract | Cites a PIID, award dollar amount, agency obligation figure, or USAspending data | USAspending MCP (`search_awards`, `get_award_detail`) or SAM.gov MCP (`lookup_award_by_piid`) | Use award ID or agency + year + amount to locate the specific award record |
+| Academic paper with DOI or PMC ID | Cites a DOI (10.xxxx/...) or PubMed/PMC ID | `hyperresearch fetch` on the DOI or PMC URL — see Paywall Resolution below | If full text returned (>500 words body), verify against full text; otherwise apply Paywall Resolution |
+| General statistic / web claim | Any other statistic, date, or factual assertion | Standard web search templates (see Mandatory Search Templates below) | Default path — use when no more specific route applies |
+
+**Bypass rule:** If the claim type is identified and routed above, skip the Mandatory Search Templates for that claim. Record the backend used in the Sources Consulted table.
+
+---
+
+## RAND Verification Procedure
+
+**Requires:** `publications-api` MCP active in the current session. This MCP is available to RAND staff within RAND project sessions where it has been configured. If you are using this skill outside that context, skip to the MCP failure fallback below.
+
+**MCP failure modes — two distinct situations:**
+
+| Result | Meaning | Action |
+|--------|---------|--------|
+| `{"data":{"publicationById":null}}` | MCP reachable but ID not in database — document may be pre-publication, not yet indexed, or the ID format is wrong | Try alternate ID formats (see Step 1); if still null after 2 attempts, fall back to rand.org web search; note "publications-api returned null — web search used" |
+| `{"message":"Endpoint request timed out"}` | MCP server unreachable this session | Fall back to web search for ALL remaining RAND claims in this run; note "publications-api MCP unavailable — web search used" for the session |
+
+Do not retry a timed-out MCP more than once per session — it will not recover mid-session.
+
+**Step 1 — Extract the RAND ID** from the citation. Pattern: letter-prefix + digits, optionally with version suffix (e.g., `RR-2788-OSD`, `RRA4524-2`, `MG-1234`). Common ID format variants to try if first attempt returns null: `RRA2152-1` → also try `RR-A2152-1`; `RBA2152-2` → also try `RB-A2152-2`.
+
+**Step 2 — Call `GetPublicationById(id)`**. This returns:
+- `long_abstract` — full abstract (primary verification surface)
+- `key_findings` — bullet-point findings (use for finding-level claim verification)
+- `recommendations` — recommendations list
+- `citation` — authoritative citation string (use to verify author names, year, title)
+- `document_link` — PDF URL (pass to `hyperresearch fetch` for full-text verification when needed)
+
+**Step 3 — Verify the claim:**
+- **Statistic or number:** search `long_abstract` and `key_findings` for the figure; if present and matches → Verified (exact); if present but differs → Numerical Error; if absent → fetch `document_link` via hyperresearch and search full text
+- **Attribution ("RAND found X"):** check `key_findings` and `long_abstract` for the stated finding; apply Status Decision Tree
+- **Author/year/title:** check `citation` field directly
+- **Finding not in abstract or key_findings:** fetch `document_link` via hyperresearch fetch for full-text search before returning Unverified
+
+**Step 4 — Label source depth:** append `[full text]` if full PDF was fetched and searched, or `[abstract + key findings]` if verification stopped at MCP fields.
+
+---
+
+## Paywall Resolution (Academic Papers)
+
+When an academic paper claim is routed to `hyperresearch fetch` and returns empty or near-empty content, apply this resolution chain before returning "Unverified":
+
+**Resolution chain (in order):**
+1. If PMC ID known: fetch `https://pubmed.ncbi.nlm.nih.gov/<pmcid>/` via hyperresearch fetch (or WebFetch if hyperresearch is unavailable)
+2. If DOI known and step 1 failed or no PMC ID: query Unpaywall — `https://api.unpaywall.org/v2/<doi>?email=<your-institutional-email>` — parse `best_oa_location.url_for_pdf`; if present, fetch that PDF URL via hyperresearch fetch (or WebFetch)
+3. If full text retrieved at any step (>500 words body): proceed with full-text verification; label the source `[full text]` in the Sources Consulted table
+4. If all steps fail: do NOT return "Unverified" — return the new status below
+
+**New status: `Paywalled — abstract verified only`**
+
+Use when: a source exists and is identifiable, but full text is inaccessible via PMC, Unpaywall, or direct fetch.
+
+```
+Status: "Paywalled — abstract verified only"
+Confidence: "abstract"
+Issue: "Full text inaccessible — claim verified against abstract/metadata only. Numerical precision and exact quotes cannot be confirmed."
+Fix: "Obtain full text via institutional access to complete verification."
+```
+
+**Critical distinction:**
+- `Unverified` = source cannot be located in any database after exhausting all search templates
+- `Paywalled — abstract verified only` = source exists and is identified, but content is gated
+
+---
+
 ## Mandatory Search Templates
+
+**Note:** RAND publication claims should use the RAND Verification Procedure above (publications-api MCP), not these web search templates. Federal award claims should use USAspending/SAM.gov MCPs. These templates apply to academic citations, statistics, and general web claims only.
 
 Run ALL applicable templates. Do not stop after first result.
 
@@ -281,6 +409,8 @@ When multiple sources found, prefer in this order:
 
 | Rank | Source Type                   | Examples                                          |
 | ---- | ----------------------------- | ------------------------------------------------- |
+| 1    | RAND institutional data (MCP) | `publications-api` MCP — authoritative RAND publication metadata, abstracts, findings |
+| 1    | Federal award data (MCP)      | USAspending MCP, SAM.gov MCP — authoritative federal procurement and assistance data |
 | 1    | Primary source                | Original study, official report, raw data         |
 | 2    | Government/institutional      | WHO, CDC, World Bank, national statistics offices |
 | 3    | Peer-reviewed publication     | Nature, Science, IEEE, ACM                        |
@@ -316,7 +446,7 @@ When uncertain, apply these rules. No judgment calls.
 | Number differs due to currency conversion | Flag as "Needs clarification: currency/units"                |
 | Same org, multiple reports                | Use most recent; cite with date                              |
 | Claim uses "approximately" or "about"     | Still verify base number is in valid range (±10% of source)  |
-| Source is paywalled                       | Note "Source behind paywall, unable to verify exact text"    |
+| Source is paywalled                       | Apply Paywall Resolution chain (PMC → Unpaywall → flag); if still inaccessible, use status "Paywalled — abstract verified only" |
 | Source is in different language           | Translate and verify; note translation                       |
 
 ---
@@ -424,73 +554,52 @@ These claims are NOT in the provided document:
 
 ## Output Format
 
-### Summary Block (Always First)
+**Default output: HTML report.** Generate an HTML file using the template below and save it to the same directory as the input document, named `citation-check-[document-slug]-[YYYY-MM-DD].html`. Then state the save path to the user.
 
-```markdown
-## Verification Report
+If the user explicitly requests a different format, use that instead:
+- **Quick (markdown):** Summary card + critical issues only (Numerical Errors, Hallucinations, Unverified, Author Attention)
+- **Full (markdown):** Complete traceability report in markdown
+- **JSON:** Machine-readable audit (see references/citation_schema.json)
 
-**Mode:** [Search / Doc-Only]
-**Document:** [filename or description]
-**Generated:** [timestamp]
+### HTML Report Template
 
-### Summary
+Generate the full HTML inline. Use only inline CSS — no external dependencies. The file must render correctly when opened directly in a browser.
+
+**Required sections (in order):**
+
+1. **Summary card** — overall PASS/FAIL banner (green/red), document name, date, mode, claim counts by status
+2. **Action items** — only if issues exist; red-bordered box listing each Numerical Error, Hallucination, Citation Gap, and Author Attention item with its fix
+3. **Verified claims table** — collapsible or full; columns: ID, Claim (truncated to ~80 chars), Source, Location, Confidence
+4. **Issues detail** — one subsection per issue status with full detail rows
+5. **Sources consulted** — table of all sources used
+
+**Status color coding:**
+- Verified → green row (`#f0fdf4` background, `#16a34a` text)
+- Numerical Error → amber (`#fffbeb`, `#92400e`)
+- Hallucination → red (`#fef2f2`, `#dc2626`)
+- Unverified → amber (`#fffbeb`, `#92400e`)
+- Misleading → orange (`#fff7ed`, `#c2410c`)
+- Paywalled — abstract only → blue-gray (`#f0f9ff`, `#0369a1`)
+- Author Attention → purple (`#faf5ff`, `#7e22ce`)
+- Internal data verified → green (same as Verified)
+
+**Summary count rows** in the summary card:
+
 | Metric | Count |
 |--------|-------|
 | Total claims extracted | X |
 | Verified | Y |
+| Verified (internal data) | Y2 |
 | Numerical Error | Z |
 | Unverified | A |
 | Hallucination | B |
 | Misleading | C |
+| Paywalled — abstract only | E |
+| Citation Gap | F |
+| Author Attention | G |
 | Not in Source (doc-only) | D |
 
-**Overall Status:** [PASS: All verified / FAIL: Issues found]
-```
-
-### Detailed Findings (Grouped by Status)
-
-```markdown
-### ✓ Verified Claims (N)
-
-| ID | Claim | Source | Location | Confidence |
-|----|-------|--------|----------|------------|
-| C01 | "92.1% accuracy" | Chen et al. 2024 | Table 3, p.8 | exact |
-
-### ✗ Numerical Errors (N)
-
-| ID | Claim | Source Value | Claimed Value | Deviation | Fix |
-|----|-------|--------------|---------------|-----------|-----|
-| C03 | "97% accuracy" | 96.555% | 97% | +0.445% | Use 96.555% |
-
-### ✗ Hallucinations (N)
-
-| ID | Claim | Issue | Source Says |
-|----|-------|-------|-------------|
-| C05 | "3x faster" | Contradicts source | Source: 2.1x faster |
-
-### ⚠ Unverified (N)
-
-| ID | Claim | Issue |
-|----|-------|-------|
-| C08 | "$50B market" | No authoritative source found |
-
-### ⚠ Misleading (N)
-
-| ID | Claim | Issue | Missing Context |
-|----|-------|-------|-----------------|
-| C10 | "Best performance" | Cherry-picked metric | Only on subset; overall performance lower |
-```
-
-### Sources Consulted
-
-```markdown
-### Sources
-
-| ID | Citation | Type | URL | Used For |
-|----|----------|------|-----|----------|
-| S1 | Chen et al. (2024) | arxiv | https://arxiv.org/... | C01, C02, C03 |
-| S2 | Statista Market Report | report | https://statista.com/... | C08 |
-```
+**Overall Status indicator:** A small inline badge — "Issues require author review" (red) or "All claims verified" (green). Do NOT use a large PASS/FAIL banner — a subtle status chip is sufficient.
 
 ---
 
@@ -506,6 +615,8 @@ These claims are NOT in the provided document:
 8. **In doc-only mode, flag ALL external knowledge** — Even if it's true.
 9. **When uncertain, be conservative** — "Unverified" is safer than false "Verified".
 10. **Follow tie-breaker rules** — No ad-hoc judgment calls.
+11. **Split compound claims at extraction** — one sentence, two verifiable components = two claim entries.
+12. **Check ratio math on all Comparative claims** — compute the ratio from raw numbers; stated multiplier must match within rounding of the underlying figures.
 
 ---
 
@@ -519,15 +630,18 @@ These claims are NOT in the provided document:
 
 ---
 
-## Output Format Options
-
-**Quick:** Summary + critical issues only (Numerical Errors, Hallucinations, Unverified)
-**Full:** Complete traceability report with all claims
-**JSON:** Machine-readable audit (see references/citation_schema.json)
-
----
-
 ## Changelog
+
+**v2.1** — Post-test improvements (2026-06-18)
+
+- Added `Internal data` claim type with its own verification path (internal consistency check, ratio math)
+- Added compound claim splitting rule at extraction time
+- Added explicit ratio math check for all Comparative claims (stated multiplier vs. computed ratio)
+- Added MCP failure mode table distinguishing null (ID not found) from timeout (MCP unreachable) with different recovery actions
+- Added common RAND ID format variants to try before falling back to web search
+- Changed default output to HTML report with status color coding and action items section
+- Added `Citation Gap` and `Author Attention` as named output statuses
+- Updated Critical Rules to include compound claim and ratio math rules
 
 **v2.0** — Consistency update
 
